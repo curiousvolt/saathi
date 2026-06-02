@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Activity, UserProfile, JoinRequest, ChatMessage, ActivityCategory } from "../types";
-import { X, MapPin, Clock, Users, User, Check, Shield, Send, MessageSquare, Trash2, Edit3, Save, Phone, Share2 } from "lucide-react";
+import { X, MapPin, Clock, Users, User, Check, Shield, Send, MessageSquare, Trash2, Edit3, Save, Phone, Share2, Receipt } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { db } from "../lib/firebase";
+import ExpenseTracker from "./ExpenseTracker";
 import { 
   collection, 
   onSnapshot, 
@@ -36,6 +37,9 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
   const [justSent, setJustSent] = useState(false);
   const [hostPhone, setHostPhone] = useState<string>("");
   const [memberPhones, setMemberPhones] = useState<Record<string, string>>({});
+  const [memberUpis, setMemberUpis] = useState<Record<string, string>>({});
+  const [memberNames, setMemberNames] = useState<Record<string, string>>({});
+  const [activeSideTab, setActiveSideTab] = useState<"chat" | "expenses">("chat");
 
   const isHost = activity?.hostId === currentUser.uid;
 
@@ -97,35 +101,41 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
     };
   }, [activityId, currentUser.uid, isHost, isApproved]);
 
-  // Fetch host's profile phone
+  // Fetch host's profile phone and UPI
   useEffect(() => {
     if (activity?.hostId) {
       getDoc(doc(db, "users", activity.hostId)).then(snapshot => {
         if (snapshot.exists()) {
-          const userData = snapshot.data();
+          const userData = snapshot.data() as UserProfile;
           setHostPhone(userData.phone || "");
+          setMemberNames(prev => ({ ...prev, [activity.hostId]: userData.fullName }));
+          if (userData.upiId) setMemberUpis(prev => ({ ...prev, [activity.hostId]: userData.upiId! }));
         }
       }).catch(err => console.error("Error fetching host user:", err));
     }
   }, [activity?.hostId]);
 
-  // Fetch approved members' missing phones (e.g. for existing requests that don't have it)
+  // Fetch approved members' missing info
   useEffect(() => {
     if (!isApproved) return;
     const approvedRequests = requests.filter(r => r.status === "approved" && r.userId !== currentUser.uid);
     approvedRequests.forEach(req => {
+      setMemberNames(prev => ({ ...prev, [req.userId]: req.requesterName }));
       if (!req.requesterPhone && !memberPhones[req.userId]) {
         getDoc(doc(db, "users", req.userId)).then(snapshot => {
           if (snapshot.exists()) {
-            const data = snapshot.data();
-            if (data.phone) {
-              setMemberPhones(prev => ({ ...prev, [req.userId]: data.phone }));
-            }
+            const data = snapshot.data() as UserProfile;
+            if (data.phone) setMemberPhones(prev => ({ ...prev, [req.userId]: data.phone }));
+            if (data.upiId) setMemberUpis(prev => ({ ...prev, [req.userId]: data.upiId! }));
           }
         }).catch(err => console.error("Error fetching approved member user:", err));
       }
     });
-  }, [requests, isApproved, memberPhones, currentUser.uid]);
+    
+    // add self to names/upi
+    setMemberNames(prev => ({ ...prev, [currentUser.uid]: currentUser.fullName }));
+    if (currentUser.upiId) setMemberUpis(prev => ({ ...prev, [currentUser.uid]: currentUser.upiId! }));
+  }, [requests, isApproved, memberPhones, currentUser.uid, currentUser.fullName, currentUser.upiId]);
 
   useEffect(() => {
     if (isApproved) {
@@ -140,11 +150,15 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
   const handleJoinRequest = async () => {
     if (isSending || justSent || myRequest) return;
     setIsSending(true);
+    
+    const isFull = activity && activity.spotsOccupied >= activity.spotsTotal;
+    const requestStatus = isFull ? "waitlisted" : "pending";
+    
     try {
       await setDoc(doc(db, "activities", activityId, "requests", currentUser.uid), {
         activityId,
         userId: currentUser.uid,
-        status: "pending",
+        status: requestStatus,
         createdAt: new Date().toISOString(),
         requesterName: currentUser.fullName,
         requesterDept: currentUser.dept,
@@ -493,7 +507,18 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-12">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 mb-12">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-zinc-200" />
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">
+                    {activity.category === "Travel" ? "DESTINATION" : "VENUE"}
+                  </span>
+                </div>
+                <p className="text-lg font-bold text-black border-l-2 border-zinc-100 pl-4 py-1">
+                  {activity.category === "Travel" ? activity.destination || "TBD" : activity.venue || "TBD"}
+                </p>
+              </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-1.5 h-1.5 rounded-full bg-zinc-200" />
@@ -614,13 +639,13 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
                   disabled={isSending}
                   className="uber-button disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isSending ? "SENDING REQUEST..." : "REQUEST TO JOIN"}
+                  {isSending ? "SENDING REQUEST..." : activity.spotsOccupied >= activity.spotsTotal ? "JOIN WAITLIST" : "REQUEST TO JOIN"}
                 </button>
               )}
-              {(justSent || (myRequest && myRequest.status === "pending")) && (
+              {(justSent || myRequest) && (
                 <div className="bg-emerald-50 rounded-2xl py-5 text-center font-bold uppercase text-[10px] tracking-[0.2em] text-emerald-600 border border-emerald-100 flex items-center justify-center gap-2">
                   <Check className="w-4 h-4 text-emerald-555" />
-                  REQUEST SENT successfully
+                  {myRequest?.status === 'waitlisted' || (justSent && activity.spotsOccupied >= activity.spotsTotal) ? "WAITLISTED" : "REQUEST SENT SUCCESSFULLY"}
                 </div>
               )}
             </div>
@@ -633,47 +658,71 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
                 <div className="p-5 bg-white rounded-3xl shadow-sm mb-6">
                   <Shield className="w-8 h-8 text-zinc-300" />
                 </div>
-                <h5 className="text-sm font-black text-black uppercase tracking-tight mb-2">Private Group Chat</h5>
+                <h5 className="text-sm font-black text-black uppercase tracking-tight mb-2">Private Group Access</h5>
                 <p className="text-[11px] text-zinc-400 font-bold leading-relaxed max-w-[240px]">
-                  Verified attendees get access to real-time chat and host coordinates.
+                  Verified attendees get access to real-time chat, expenses, and host coordinates.
                 </p>
               </div>
             ) : (
               <>
-                <div className="p-6 border-b border-zinc-200 bg-white flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4 text-black" />
-                    <span className="text-[10px] font-black text-black uppercase tracking-widest">GROUP CHAT</span>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin">
-                  {messages.map((msg) => (
-                    <div key={msg.id} className={`flex flex-col ${msg.senderId === currentUser.uid ? 'items-end' : 'items-start'}`}>
-                      <span className="text-[8px] font-black text-zinc-400 uppercase mb-2 px-1">{msg.senderName}</span>
-                      <div className={`max-w-[90%] px-5 py-3 rounded-2xl text-xs font-bold leading-relaxed ${
-                        msg.senderId === currentUser.uid 
-                          ? 'bg-black text-white rounded-tr-none' 
-                          : 'bg-white border border-zinc-100 text-zinc-600 rounded-tl-none'
-                      }`}>
-                        {msg.text}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <form onSubmit={handleSendMessage} className="p-6 bg-white border-t border-zinc-100 flex gap-3">
-                  <input
-                    type="text"
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="SAY SOMETHING..."
-                    className="flex-1 bg-zinc-100 rounded-xl py-3 px-5 text-[10px] font-bold focus:outline-none focus:bg-white focus:ring-1 focus:ring-black transition-all"
-                  />
-                  <button type="submit" className="p-3 bg-black text-white rounded-xl hover:bg-zinc-800 transition-colors">
-                    <Send className="w-4 h-4" />
+                <div className="flex border-b border-zinc-200 bg-white">
+                  <button
+                    onClick={() => setActiveSideTab("chat")}
+                    className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2 ${
+                      activeSideTab === "chat" ? "text-black border-b-2 border-black" : "text-zinc-400 hover:text-black"
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" /> Chat
                   </button>
-                </form>
+                  <button
+                    onClick={() => setActiveSideTab("expenses")}
+                    className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2 ${
+                      activeSideTab === "expenses" ? "text-black border-b-2 border-black" : "text-zinc-400 hover:text-black"
+                    }`}
+                  >
+                    <Receipt className="w-3.5 h-3.5" /> Expenses
+                  </button>
+                </div>
+
+                {activeSideTab === "chat" ? (
+                  <>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin bg-zinc-50">
+                      {messages.map((msg) => (
+                        <div key={msg.id} className={`flex flex-col ${msg.senderId === currentUser.uid ? 'items-end' : 'items-start'}`}>
+                          <span className="text-[8px] font-black text-zinc-400 uppercase mb-2 px-1">{msg.senderName}</span>
+                          <div className={`max-w-[90%] px-5 py-3 rounded-2xl text-xs font-bold leading-relaxed ${
+                            msg.senderId === currentUser.uid 
+                              ? 'bg-black text-white rounded-tr-none' 
+                              : 'bg-white border border-zinc-100 text-zinc-600 rounded-tl-none'
+                          }`}>
+                            {msg.text}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <form onSubmit={handleSendMessage} className="p-6 bg-white border-t border-zinc-100 flex gap-3">
+                      <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder="SAY SOMETHING..."
+                        className="flex-1 bg-zinc-100 rounded-xl py-3 px-5 text-[10px] font-bold focus:outline-none focus:bg-white focus:ring-1 focus:ring-black transition-all"
+                      />
+                      <button type="submit" className="p-3 bg-black text-white rounded-xl hover:bg-zinc-800 transition-colors">
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </form>
+                  </>
+                ) : (
+                  <ExpenseTracker 
+                    activityId={activityId} 
+                    currentUser={currentUser}
+                    approvedMembers={Object.keys(memberNames)}
+                    memberNames={memberNames}
+                    memberUpis={memberUpis}
+                  />
+                )}
               </>
             )}
           </div>

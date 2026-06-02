@@ -175,7 +175,7 @@ export default function NotificationsTab({
                   </div>
 
                   <div className="flex items-center gap-3 self-end md:self-center">
-                    {alertItem.status === "pending" ? (
+                    {(alertItem.status === "pending" || alertItem.status === "waitlisted") ? (
                       <>
                         <button
                           onClick={() => onDeclineRequest(alertItem.activityId, alertItem.rawRequest)}
@@ -207,6 +207,7 @@ export default function NotificationsTab({
               const isApproved = alertItem.status === "approved";
               const isDeclined = alertItem.status === "declined";
               const isPending = alertItem.status === "pending";
+              const isWaitlisted = alertItem.status === "waitlisted";
 
               return (
                 <div 
@@ -229,7 +230,9 @@ export default function NotificationsTab({
                           ? "bg-emerald-50 border-emerald-150 text-emerald-600" 
                           : isDeclined 
                             ? "bg-red-50 border-red-150 text-red-600" 
-                            : "bg-zinc-50 border-zinc-150 text-zinc-500"
+                            : isWaitlisted
+                              ? "bg-amber-50 border-amber-150 text-amber-600"
+                              : "bg-zinc-50 border-zinc-150 text-zinc-500"
                       }`}>
                         MY SENT REQUEST: {alertItem.status.toUpperCase()}
                       </span>
@@ -242,6 +245,9 @@ export default function NotificationsTab({
                         )}
                         {isPending && (
                           <span>Your request for <span className="font-extrabold text-black">‘{alertItem.activityTitle}’</span> is pending host approval.</span>
+                        )}
+                        {isWaitlisted && (
+                          <span>You are on the waitlist for <span className="font-extrabold text-black">‘{alertItem.activityTitle}’</span>.</span>
                         )}
                       </p>
                     </div>

@@ -38,11 +38,23 @@ const ActivityCard: React.FC<ActivityCardProps> = ({ activity, onClick }) => {
           </span>
         </div>
 
-        <h3 className="text-xl font-bold text-black mb-3 leading-tight tracking-tight group-hover:text-zinc-700 transition-colors">
+        <h3 className="text-xl font-bold text-black mb-1.5 leading-tight tracking-tight group-hover:text-zinc-700 transition-colors">
           {activity.title}
         </h3>
+        
+        {activity.description && (
+          <p className="text-xs text-zinc-500 font-medium mb-4 line-clamp-2 leading-relaxed">
+            {activity.description}
+          </p>
+        )}
 
         <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-zinc-400 text-[10px] font-bold uppercase tracking-widest">
+          {activity.destination && (
+            <div className="flex items-center gap-1.5 bg-zinc-50 px-2 py-1 rounded-md">
+              <span className="text-emerald-500">→</span>
+              <span>{activity.destination}</span>
+            </div>
+          )}
           <div className="flex items-center gap-1.5 bg-zinc-50 px-2 py-1 rounded-md">
             <MapPin className="w-3 h-3" />
             <span>{activity.meetingPoint}</span>
