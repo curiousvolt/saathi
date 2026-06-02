@@ -44,6 +44,7 @@ export default function ProfileForm({ initialData, onSubmit, isLoading }: Profil
     course: initialData?.course || courses[0],
     gender: initialData?.gender || "Male",
     phone: initialData?.phone || "",
+    upiId: initialData?.upiId || "",
     hostelBlock: initialData?.hostelBlock || bhawans[0],
     interests: initialData?.interests || [],
   });
@@ -165,6 +166,17 @@ export default function ProfileForm({ initialData, onSubmit, isLoading }: Profil
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 className="w-full bg-zinc-50 border-b-2 border-transparent focus:border-black py-4 px-0 text-xl font-bold focus:outline-none"
                 placeholder="+91"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-4 block">UPI ID (For Expense Splitting)</label>
+              <input
+                type="text"
+                value={formData.upiId}
+                onChange={(e) => setFormData({ ...formData, upiId: e.target.value })}
+                className="w-full bg-zinc-50 border-b-2 border-transparent focus:border-black py-4 px-0 text-xl font-bold focus:outline-none"
+                placeholder="username@upi"
               />
             </div>
 

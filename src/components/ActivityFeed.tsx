@@ -91,14 +91,13 @@ export default function ActivityFeed({ activities, onActivityClick, currentUser 
   }
 
   const filteredActivities = activities.filter((activity) => {
-    const isNotFull = activity.spotsOccupied < activity.spotsTotal;
     const matchesCategory = activeCategory === "All" || activity.category === activeCategory;
     const matchesSearch =
       activity.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       activity.destination?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       activity.hostName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (activity.hostBhawan && activity.hostBhawan.toLowerCase().includes(searchQuery.toLowerCase()));
-    return isNotFull && matchesCategory && matchesSearch;
+    return matchesCategory && matchesSearch;
   });
 
   return (
@@ -239,7 +238,7 @@ export default function ActivityFeed({ activities, onActivityClick, currentUser 
       )}
 
       {viewMode === "map" ? (
-        <MapView activities={filteredActivities} onActivityClick={onActivityClick} />
+        <MapView activities={filteredActivities} onActivityClick={onActivityClick} currentUser={currentUser} />
       ) : filteredActivities.length > 0 ? (
         <div className="flex flex-col">
           {filteredActivities.map((activity) => (

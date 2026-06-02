@@ -20,6 +20,7 @@ export interface UserProfile {
   interests?: string[];
   rating?: number;
   activityCount?: number;
+  upiId?: string;
   isProfileComplete: boolean;
   createdAt: string;
 }
@@ -60,7 +61,7 @@ export interface JoinRequest {
   id: string;
   activityId: string;
   userId: string;
-  status: "pending" | "approved" | "declined";
+  status: "pending" | "approved" | "declined" | "waitlisted";
   createdAt: string;
   requesterName: string;
   requesterPhoto?: string;
@@ -76,6 +77,16 @@ export interface ChatMessage {
   senderId: string;
   senderName: string;
   text: string;
+  createdAt: string;
+}
+
+export interface Expense {
+  id: string;
+  activityId: string;
+  payerId: string;
+  payerName: string;
+  amount: number;
+  description: string;
   createdAt: string;
 }
 

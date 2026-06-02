@@ -79,7 +79,7 @@ service cloud.firestore {
       function isValidRequest(data) {
         return data.activityId == activityId &&
                data.userId == request.auth.uid &&
-               data.status in ['pending', 'approved', 'declined'];
+               data.status in ['pending', 'approved', 'declined', 'waitlisted'];
       }
 
       function isApprovedMember() {
@@ -98,9 +98,24 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         // Requester can cancel (withdraw)
         (request.auth.uid == existing().userId && incoming().status == 'cancelled') ||
-        // Host can approve/decline
-        (get(/databases/$(database)/documents/activities/$(activityId)).data.hostId == request.auth.uid && incoming().status in ['approved', 'declined'])
+        // Host can approve/decline/waitlist
+        (get(/databases/$(database)/documents/activities/$(activityId)).data.hostId == request.auth.uid && incoming().status in ['approved', 'declined', 'waitlisted', 'pending'])
       );
+    }
+    
+    // 3.5. Expenses Collection
+    match /activities/{activityId}/expenses/{expenseId} {
+      function isMember() {
+        return isSignedIn() && (
+          get(/databases/$(database)/documents/activities/$(activityId)).data.hostId == request.auth.uid ||
+          (exists(/databases/$(database)/documents/activities/$(activityId)/requests/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/activities/$(activityId)/requests/$(request.auth.uid)).data.status == 'approved')
+        );
+      }
+
+      allow list, get: if isMember();
+      allow create: if isMember() && incoming().payerId == request.auth.uid && incoming().amount > 0;
+      allow update, delete: if isMember() && existing().payerId == request.auth.uid;
     }
 
     // 4. Chat Messages
