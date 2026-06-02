@@ -70,7 +70,7 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow get: if isSignedIn();
       allow create: if isIitrEmail() && isValidActivity(incoming()) && incoming().hostId == request.auth.uid;
-      allow update: if isHost() && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'destination', 'venue', 'dateTime', 'meetingPoint', 'spotsTotal', 'status', 'isRecurring', 'recurrenceFrequency', 'spotsOccupied', 'isArchived']));
+      allow update: if isHost() && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'destination', 'venue', 'dateTime', 'meetingPoint', 'spotsTotal', 'status', 'isRecurring', 'recurrenceFrequency', 'spotsOccupied', 'isArchived', 'locationCoords']));
       allow delete: if isHost();
     }
 

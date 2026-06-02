@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Activity, UserProfile, JoinRequest, ChatMessage, ActivityCategory } from "../types";
-import { X, MapPin, Clock, Users, User, Check, Shield, Send, MessageSquare, Trash2, Edit3, Save, Phone, Share2, Receipt, Archive } from "lucide-react";
+import { X, MapPin, Clock, Users, User, Check, Shield, Send, MessageSquare, Trash2, Edit3, Save, Phone, Share2, Receipt, Archive, Star, CalendarPlus, RefreshCw } from "lucide-react";
+import RatingModal from "./RatingModal";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { db } from "../lib/firebase";
@@ -40,8 +41,10 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
   const [memberUpis, setMemberUpis] = useState<Record<string, string>>({});
   const [memberNames, setMemberNames] = useState<Record<string, string>>({});
   const [activeSideTab, setActiveSideTab] = useState<"chat" | "expenses">("chat");
+  const [showRatingModal, setShowRatingModal] = useState(false);
 
   const isHost = activity?.hostId === currentUser.uid;
+  const isExpired = activity ? new Date(activity.dateTime) < new Date() : false;
 
   useEffect(() => {
     const unsubActivity = onSnapshot(doc(db, "activities", activityId), (doc) => {
@@ -237,6 +240,60 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
     }
   };
 
+  const handleAddToCalendar = () => {
+    if (!activity) return;
+    const start = new Date(activity.dateTime);
+    const end = new Date(start.getTime() + 2 * 60 * 60 * 1000); // 2hrs assumed
+    const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    const location = activity.meetingPoint || activity.venue || activity.destination || "";
+    const icsContent = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "BEGIN:VEVENT",
+      `DTSTART:${fmt(start)}`,
+      `DTEND:${fmt(end)}`,
+      `SUMMARY:${activity.title}`,
+      `DESCRIPTION:${activity.description || "Saathi Activity"}`,
+      `LOCATION:${location}`,
+      "END:VEVENT",
+      "END:VCALENDAR"
+    ].join("\n");
+    const blob = new Blob([icsContent], { type: "text/calendar" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${activity.title.replace(/\s+/g, "_")}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Calendar event downloaded!");
+  };
+
+  const handleRepeatBooking = async () => {
+    if (!activity || isSending) return;
+    setIsSending(true);
+    try {
+      await setDoc(doc(db, "activities", activityId, "requests", currentUser.uid), {
+        activityId,
+        userId: currentUser.uid,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+        requesterName: currentUser.fullName,
+        requesterDept: currentUser.dept,
+        requesterYear: currentUser.year,
+        requesterCourse: currentUser.course,
+        requesterGender: currentUser.gender,
+        requesterPhoto: currentUser.photoUrl || "",
+        requesterPhone: currentUser.phone || "",
+      });
+      toast.success("Re-join request sent!");
+      setJustSent(true);
+    } catch (e) {
+      toast.error("Failed to re-join.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
@@ -257,6 +314,7 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
   if (!activity) return null;
 
   return (
+    <>
     <AnimatePresence>
       <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
         <motion.div
@@ -287,6 +345,13 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleAddToCalendar}
+                  className="p-2 hover:bg-zinc-100 text-zinc-400 hover:text-black rounded-full transition-colors"
+                  title="Add to Calendar"
+                >
+                  <CalendarPlus className="w-5 h-5" />
+                </button>
                 <button 
                   onClick={handleShare}
                   className="p-2 hover:bg-zinc-100 text-zinc-400 hover:text-black rounded-full transition-colors"
@@ -661,6 +726,29 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
                   {myRequest?.status === 'waitlisted' || (justSent && activity.spotsOccupied >= activity.spotsTotal) ? "WAITLISTED" : "REQUEST SENT SUCCESSFULLY"}
                 </div>
               )}
+
+              {/* Rate Activity Button - shown to approved non-host members after event ends */}
+              {!isHost && isApproved && isExpired && (
+                <button
+                  onClick={() => setShowRatingModal(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-amber-200 bg-amber-50 text-amber-700 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-amber-100 transition-colors"
+                >
+                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                  Rate This Activity
+                </button>
+              )}
+
+              {/* Repeat Booking - for recurring activities after the event, if member was approved and now spot is gone */}
+              {!isHost && isApproved && isExpired && activity?.isRecurring && (
+                <button
+                  onClick={handleRepeatBooking}
+                  disabled={isSending}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-100 text-black rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Re-Join Next Session
+                </button>
+              )}
             </div>
           </div>
 
@@ -742,5 +830,13 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
         </motion.div>
       </div>
     </AnimatePresence>
+    {showRatingModal && activity && (
+      <RatingModal
+        activity={activity}
+        currentUser={currentUser}
+        onClose={() => setShowRatingModal(false)}
+      />
+    )}
+    </>
   );
 }

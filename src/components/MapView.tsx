@@ -46,8 +46,17 @@ const locationCoords: Record<string, [number, number]> = {
 
 const IITR_CENTER: [number, number] = [29.8649, 77.8966];
 
-function getCoordinatesForActivity(activity: Activity): [number, number] {
-  // Prioritize plotting based on where the Host is from (Bhawan)
+export function getCoordinatesForActivity(activity: Activity): [number, number] {
+  // If exact GPS coordinates are available, use them!
+  if (activity.locationCoords) {
+    // Add a tiny jitter so identical exact locations don't perfectly overlap
+    return [
+      activity.locationCoords.lat + (Math.random() - 0.5) * 0.0005,
+      activity.locationCoords.lng + (Math.random() - 0.5) * 0.0005
+    ];
+  }
+
+  // Fallback to plotting based on where the Host is from (Bhawan)
   const locationText = (activity.hostBhawan || activity.meetingPoint || activity.venue || activity.destination || "").toLowerCase();
   
   for (const [key, coords] of Object.entries(locationCoords)) {

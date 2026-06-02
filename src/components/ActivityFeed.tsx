@@ -3,7 +3,20 @@ import { Activity, ActivityCategory, UserProfile } from "../types";
 import ActivityCard from "./ActivityCard";
 import { Search, Filter, Sparkles, MapPin, Clock, Users, ChevronRight, BookOpen, Home, GraduationCap, Map, List } from "lucide-react";
 import { motion } from "motion/react";
-import MapView from "./MapView";
+import { toast } from "sonner";
+import MapView, { getCoordinatesForActivity } from "./MapView";
+
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return R * c; // Distance in km
+}
 
 interface ActivityFeedProps {
   activities: Activity[];
@@ -15,6 +28,41 @@ export default function ActivityFeed({ activities, onActivityClick, currentUser 
   const [activeCategory, setActiveCategory] = useState<ActivityCategory | "All">("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  const [sortBy, setSortBy] = useState<"latest" | "distance">("latest");
+  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+
+  const handleSortDistance = () => {
+    if (sortBy === "distance") {
+      setSortBy("latest");
+      return;
+    }
+    
+    if (userLocation) {
+      setSortBy("distance");
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setSortBy("distance");
+        setIsLocating(false);
+        toast.success("Location found! Sorting by distance.");
+      },
+      (err) => {
+        console.error(err);
+        toast.error("Could not get your location. Please allow location access.");
+        setIsLocating(false);
+      }
+    );
+  };
 
   const categories: (ActivityCategory | "All")[] = ["All", ...Object.values(ActivityCategory)];
 
@@ -93,6 +141,9 @@ export default function ActivityFeed({ activities, onActivityClick, currentUser 
 
   const filteredActivities = activities.filter((activity) => {
     if (activity.isArchived) return false;
+    // Auto-hide activities that happened more than 2 hours ago
+    const expiry = new Date(activity.dateTime).getTime() + 2 * 60 * 60 * 1000;
+    if (expiry < Date.now()) return false;
     const matchesCategory = activeCategory === "All" || activity.category === activeCategory;
     const matchesSearch =
       activity.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -101,6 +152,19 @@ export default function ActivityFeed({ activities, onActivityClick, currentUser 
       (activity.hostBhawan && activity.hostBhawan.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
+
+  if (sortBy === "distance" && userLocation) {
+    filteredActivities.sort((a, b) => {
+      const [latA, lngA] = getCoordinatesForActivity(a);
+      const [latB, lngB] = getCoordinatesForActivity(b);
+      const distA = getDistance(userLocation.lat, userLocation.lng, latA, lngA);
+      const distB = getDistance(userLocation.lat, userLocation.lng, latB, lngB);
+      return distA - distB;
+    });
+  } else {
+    // Sort by most recently created
+    filteredActivities.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
 
   return (
     <div className="flex flex-col gap-0 pb-24">
@@ -134,6 +198,18 @@ export default function ActivityFeed({ activities, onActivityClick, currentUser 
               ))}
             </div>
             
+            <div className="flex bg-zinc-100 p-1 rounded-full shrink-0 mr-2">
+              <button
+                onClick={handleSortDistance}
+                disabled={isLocating}
+                className={`p-2 rounded-full transition-all text-xs font-bold uppercase flex items-center gap-1 ${sortBy === "distance" ? "bg-white text-black shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
+                title="Sort by Distance"
+              >
+                {isLocating ? "⏳" : <MapPin className="w-4 h-4" />}
+                <span className="hidden md:inline">{sortBy === "distance" ? "Nearest" : "Distance"}</span>
+              </button>
+            </div>
+
             <div className="flex bg-zinc-100 p-1 rounded-full shrink-0">
               <button
                 onClick={() => setViewMode("list")}
