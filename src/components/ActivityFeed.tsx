@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { Activity, ActivityCategory, UserProfile } from "../types";
 import ActivityCard from "./ActivityCard";
-import { Search, Filter, Sparkles, MapPin, Clock, Users, ChevronRight, BookOpen, Home, GraduationCap } from "lucide-react";
+import { Search, Filter, Sparkles, MapPin, Clock, Users, ChevronRight, BookOpen, Home, GraduationCap, Map, List } from "lucide-react";
 import { motion } from "motion/react";
+import MapView from "./MapView";
 
 interface ActivityFeedProps {
   activities: Activity[];
@@ -13,6 +14,7 @@ interface ActivityFeedProps {
 export default function ActivityFeed({ activities, onActivityClick, currentUser }: ActivityFeedProps) {
   const [activeCategory, setActiveCategory] = useState<ActivityCategory | "All">("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
 
   const categories: (ActivityCategory | "All")[] = ["All", ...Object.values(ActivityCategory)];
 
@@ -114,26 +116,45 @@ export default function ActivityFeed({ activities, onActivityClick, currentUser 
             />
           </div>
 
-          <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
-            {categories.map((category) => (
+          <div className="flex justify-between items-center gap-4">
+            <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-none flex-1">
+              {categories.map((category) => (
+                <button
+                  key={category}
+                  onClick={() => setActiveCategory(category)}
+                  className={`px-6 py-2.5 rounded-full text-[10px] font-black tracking-[0.15em] whitespace-nowrap transition-all border ${
+                    activeCategory === category
+                      ? "bg-black border-black text-white"
+                      : "bg-white border-zinc-100 text-zinc-400 hover:border-zinc-300"
+                  }`}
+                >
+                  {category.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            
+            <div className="flex bg-zinc-100 p-1 rounded-full shrink-0">
               <button
-                key={category}
-                onClick={() => setActiveCategory(category)}
-                className={`px-6 py-2.5 rounded-full text-[10px] font-black tracking-[0.15em] whitespace-nowrap transition-all border ${
-                  activeCategory === category
-                    ? "bg-black border-black text-white"
-                    : "bg-white border-zinc-100 text-zinc-400 hover:border-zinc-300"
-                }`}
+                onClick={() => setViewMode("list")}
+                className={`p-2 rounded-full transition-all ${viewMode === "list" ? "bg-white text-black shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
+                title="List View"
               >
-                {category.toUpperCase()}
+                <List className="w-4 h-4" />
               </button>
-            ))}
+              <button
+                onClick={() => setViewMode("map")}
+                className={`p-2 rounded-full transition-all ${viewMode === "map" ? "bg-white text-black shadow-sm" : "text-zinc-400 hover:text-zinc-600"}`}
+                title="Map View"
+              >
+                <Map className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Suggested Matches Section (Smart Algorithm based on hostel, year, dept) */}
-      {suggestions.length > 0 && searchQuery === "" && activeCategory === "All" && (
+      {viewMode === "list" && suggestions.length > 0 && searchQuery === "" && activeCategory === "All" && (
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -217,7 +238,9 @@ export default function ActivityFeed({ activities, onActivityClick, currentUser 
         </motion.div>
       )}
 
-      {filteredActivities.length > 0 ? (
+      {viewMode === "map" ? (
+        <MapView activities={filteredActivities} onActivityClick={onActivityClick} />
+      ) : filteredActivities.length > 0 ? (
         <div className="flex flex-col">
           {filteredActivities.map((activity) => (
             <ActivityCard

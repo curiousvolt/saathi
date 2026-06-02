@@ -129,5 +129,12 @@ service cloud.firestore {
       allow create: if isSignedIn() && incoming().reporterId == request.auth.uid;
       allow read: if false; // Admins only (handled via console/server)
     }
+
+    // 7. Notifications
+    match /notifications/{notificationId} {
+      allow list, get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && existing().userId == request.auth.uid && incoming().isRead == true;
+    }
   }
 }

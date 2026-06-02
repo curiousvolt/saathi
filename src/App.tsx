@@ -4,6 +4,7 @@ import ActivityFeed from "./components/ActivityFeed";
 import CreateActivityModal from "./components/CreateActivityModal";
 import ActivityModal from "./components/ActivityModal";
 import ProfileForm from "./components/ProfileForm";
+import NotificationsTab from "./components/NotificationsTab";
 import { Activity, UserProfile, ActivityCategory, JoinRequest } from "./types";
 import { motion, AnimatePresence } from "motion/react";
 import { Sparkles, Calendar, Bell, Compass, User, LogOut, Check, X, MessageSquare, Flame, ShieldAlert, ShieldCheck, Eye, Compass as MapPin } from "lucide-react";
@@ -43,6 +44,7 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isEmailLogin, setIsEmailLogin] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -115,6 +117,21 @@ export default function App() {
     }
   }, [user?.isProfileComplete]);
 
+  // Real-time unread notifications count
+  useEffect(() => {
+    if (user?.uid) {
+      const q = query(
+        collection(db, "notifications"),
+        where("userId", "==", user.uid),
+        where("isRead", "==", false)
+      );
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setUnreadCount(snapshot.docs.length);
+      });
+      return () => unsubscribe();
+    }
+  }, [user?.uid]);
+
   // Real-time synchronization of join requests concerning the current user
   useEffect(() => {
     if (!user?.isProfileComplete || activities.length === 0) {
@@ -176,6 +193,16 @@ export default function App() {
       await updateDoc(doc(db, "activities", activityId), {
         spotsOccupied: (act?.spotsOccupied || 1) + 1
       });
+      
+      await addDoc(collection(db, "notifications"), {
+        userId: req.userId,
+        type: "request_approved",
+        activityId: activityId,
+        message: `Your request to join ${act?.title} was approved!`,
+        isRead: false,
+        createdAt: new Date().toISOString()
+      });
+
       toast.success("Request approved!");
     } catch (e) {
       console.error(e);
@@ -184,8 +211,19 @@ export default function App() {
   };
 
   const handleDeclineRequest = async (activityId: string, req: JoinRequest) => {
+    const act = activities.find(a => a.id === activityId);
     try {
       await updateDoc(doc(db, "activities", activityId, "requests", req.id), { status: "declined" });
+      
+      await addDoc(collection(db, "notifications"), {
+        userId: req.userId,
+        type: "request_declined",
+        activityId: activityId,
+        message: `Your request to join ${act?.title} was declined.`,
+        isRead: false,
+        createdAt: new Date().toISOString()
+      });
+
       toast.success("Request declined.");
     } catch (e) {
       console.error(e);
@@ -463,50 +501,6 @@ export default function App() {
     );
   }
 
-  // Generate alerts chronologically
-  const hostAlerts = allRequests
-    .filter(req => {
-      const act = activities.find(a => a.id === req.activityId);
-      return act && act.hostId === user.uid;
-    })
-    .map(req => {
-      const act = activities.find(a => a.id === req.activityId);
-      return {
-        id: `host-${req.id}-${req.activityId}`,
-        type: "host_request",
-        activityId: req.activityId,
-        activityTitle: act?.title || "Activity",
-        status: req.status,
-        requesterName: req.requesterName,
-        requesterPhoto: req.requesterPhoto,
-        requesterDept: req.requesterDept,
-        requesterYear: req.requesterYear,
-        requesterGender: req.requesterGender,
-        createdAt: req.createdAt,
-        rawRequest: req,
-      };
-    });
-
-  const participantAlerts = allRequests
-    .filter(req => req.userId === user.uid)
-    .map(req => {
-      const act = activities.find(a => a.id === req.activityId);
-      return {
-        id: `participant-${req.activityId}`,
-        type: "participant_status",
-        activityId: req.activityId,
-        activityTitle: act?.title || "Activity",
-        hostName: act?.hostName || "Host",
-        status: req.status,
-        createdAt: req.createdAt,
-        rawRequest: req,
-      };
-    });
-
-  const mrgAlerts = [...hostAlerts, ...participantAlerts].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
-
   const myApprovedRequests = allRequests.filter(r => r.userId === user.uid && r.status === "approved");
   const joinedActivities = activities.filter(act => 
     myApprovedRequests.some(req => req.activityId === act.id)
@@ -523,6 +517,7 @@ export default function App() {
         }}
         onLogout={handleLogout}
         userPhoto={user.photoUrl}
+        unreadCount={unreadCount}
       />
 
       <main className="max-w-5xl mx-auto px-6 md:px-12 pt-16 md:pt-20 pb-32">
@@ -548,138 +543,15 @@ export default function App() {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
-              className="space-y-6 pt-4 md:pt-6"
             >
-              <div className="mb-10 text-left border-b border-zinc-100 pb-6">
-                <h2 className="text-4xl font-black text-black tracking-tight font-display">ALERTS & JOINS</h2>
-                <p className="text-zinc-400 font-bold uppercase tracking-widest text-[10px] mt-1">Real-time requests and circle coordinates</p>
-              </div>
-
-              {mrgAlerts.length > 0 ? (
-                <div className="space-y-4">
-                  {mrgAlerts.map((alertItem) => {
-                    if (alertItem.type === "host_request") {
-                      return (
-                        <div 
-                          key={alertItem.id} 
-                          className="bg-white p-6 border border-zinc-100 rounded-3xl shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-6"
-                        >
-                          <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-zinc-100 text-black flex items-center justify-center font-bold flex-shrink-0 text-lg overflow-hidden">
-                              {alertItem.requesterPhoto ? (
-                                <img src={alertItem.requesterPhoto} alt="" className="w-full h-full object-cover" />
-                              ) : (
-                                alertItem.requesterName[0]
-                              )}
-                            </div>
-                            <div className="space-y-1">
-                              <span className="text-[10px] bg-black text-white px-2 py-0.5 rounded font-black tracking-wider uppercase">
-                                JOIN REQUEST
-                              </span>
-                              <p className="text-sm font-bold text-zinc-900 leading-tight">
-                                <span className="font-extrabold text-black">{alertItem.requesterName}</span> ({alertItem.requesterGender}, Year {alertItem.requesterYear}) requested to join <span className="underline">{alertItem.activityTitle}</span>
-                              </p>
-                              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
-                                {alertItem.requesterDept}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 self-end md:self-center">
-                            {alertItem.status === "pending" ? (
-                              <>
-                                <button
-                                  onClick={() => handleDeclineRequest(alertItem.activityId, alertItem.rawRequest)}
-                                  className="px-4 py-2 text-zinc-400 hover:text-red-500 font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
-                                >
-                                  Decline
-                                </button>
-                                <button
-                                  onClick={() => handleApproveRequest(alertItem.activityId, alertItem.rawRequest)}
-                                  className="bg-black hover:bg-zinc-800 text-white px-5 py-2.5 rounded-full font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:shadow-md"
-                                >
-                                  Approve
-                                </button>
-                              </>
-                            ) : (
-                              <span className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                                alertItem.status === "approved"
-                                  ? "bg-emerald-50 border-emerald-200 text-emerald-600"
-                                  : "bg-zinc-50 border-zinc-100 text-zinc-400"
-                              }`}>
-                                {alertItem.status}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    } else {
-                      // participant status update
-                      const isApproved = alertItem.status === "approved";
-                      const isDeclined = alertItem.status === "declined";
-                      const isPending = alertItem.status === "pending";
-
-                      return (
-                        <div 
-                          key={alertItem.id} 
-                          className="bg-white p-6 border border-zinc-100 rounded-3xl shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-6"
-                        >
-                          <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-zinc-50 text-zinc-600 flex items-center justify-center flex-shrink-0">
-                              {isApproved ? (
-                                <ShieldCheck className="w-6 h-6 text-emerald-500" />
-                              ) : isDeclined ? (
-                                <ShieldAlert className="w-6 h-6 text-red-500" />
-                              ) : (
-                                <Calendar className="w-6 h-6 text-zinc-400 animate-pulse" />
-                              )}
-                            </div>
-                            <div className="space-y-1">
-                              <span className={`text-[9px] px-2 py-0.5 rounded font-black tracking-wider uppercase border ${
-                                isApproved 
-                                  ? "bg-emerald-50 border-emerald-150 text-emerald-600" 
-                                  : isDeclined 
-                                    ? "bg-red-50 border-red-150 text-red-600" 
-                                    : "bg-zinc-50 border-zinc-150 text-zinc-500"
-                              }`}>
-                                MY SENT REQUEST: {alertItem.status.toUpperCase()}
-                              </span>
-                              <p className="text-sm font-bold text-zinc-900 leading-snug">
-                                {isApproved && (
-                                  <span>Your request to join <span className="font-extrabold text-black">‘{alertItem.activityTitle}’</span> was approved by {alertItem.hostName}! 🎉</span>
-                                )}
-                                {isDeclined && (
-                                  <span>Your request to join <span className="font-extrabold text-black">‘{alertItem.activityTitle}’</span> was declined.</span>
-                                )}
-                                {isPending && (
-                                  <span>Your request for <span className="font-extrabold text-black">‘{alertItem.activityTitle}’</span> is pending host approval.</span>
-                                )}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center self-end md:self-center">
-                            {isApproved && (
-                              <button
-                                onClick={() => setSelectedActivityId(alertItem.activityId)}
-                                className="flex items-center gap-2 bg-zinc-900 hover:bg-black text-white px-4 py-2.5 rounded-full font-black text-[10px] tracking-wider uppercase transition-all shadow-sm"
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" /> OPEN CHAT
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    }
-                  })}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-20 bg-zinc-50 rounded-3xl border border-zinc-100">
-                  <Bell className="w-12 h-12 text-zinc-200 mb-4 animate-bounce" />
-                  <h4 className="font-bold text-zinc-800 text-lg">Your feed is clean</h4>
-                  <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider mt-1">Pending inquiries and coordinates will show up here</p>
-                </div>
-              )}
+              <NotificationsTab
+                user={user}
+                activities={activities}
+                allRequests={allRequests}
+                onApproveRequest={handleApproveRequest}
+                onDeclineRequest={handleDeclineRequest}
+                onOpenChat={(id) => setSelectedActivityId(id)}
+              />
             </motion.div>
           )}
 

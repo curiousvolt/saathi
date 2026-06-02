@@ -154,6 +154,18 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
         requesterPhoto: currentUser.photoUrl || "",
         requesterPhone: currentUser.phone || "",
       });
+      
+      if (activity?.hostId) {
+        await addDoc(collection(db, "notifications"), {
+          userId: activity.hostId,
+          type: "join_request",
+          activityId: activityId,
+          message: `${currentUser.fullName} requested to join your activity: ${activity.title}`,
+          isRead: false,
+          createdAt: new Date().toISOString()
+        });
+      }
+
       setJustSent(true);
       toast.success("Join request sent!");
     } catch (e) {

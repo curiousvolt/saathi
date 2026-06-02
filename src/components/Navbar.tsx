@@ -6,9 +6,10 @@ interface NavbarProps {
   activeTab: string;
   userPhoto?: string;
   onLogout: () => void;
+  unreadCount?: number;
 }
 
-export default function Navbar({ onTabChange, activeTab, userPhoto, onLogout }: NavbarProps) {
+export default function Navbar({ onTabChange, activeTab, userPhoto, onLogout, unreadCount = 0 }: NavbarProps) {
   const tabs = [
     { id: "feed", label: "FEED", icon: Compass },
     { id: "notifications", label: "ALERTS", icon: Bell },
@@ -43,6 +44,9 @@ export default function Navbar({ onTabChange, activeTab, userPhoto, onLogout }: 
             >
               <Icon className="w-4.5 h-4.5 md:w-5 md:h-5" />
               <span className="hidden sm:inline text-xs md:text-sm font-extrabold tracking-widest">{tab.label}</span>
+              {tab.id === "notifications" && unreadCount > 0 && (
+                <span className="absolute top-1 right-1 md:right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              )}
               {activeTab === tab.id && (
                 <motion.div
                   layoutId="activeTabNav"

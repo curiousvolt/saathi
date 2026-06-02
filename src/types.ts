@@ -78,3 +78,13 @@ export interface ChatMessage {
   text: string;
   createdAt: string;
 }
+
+export interface AppNotification {
+  id: string;
+  userId: string; // The user receiving the notification
+  type: "join_request" | "request_approved" | "request_declined";
+  activityId: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
