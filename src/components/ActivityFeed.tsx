@@ -27,6 +27,7 @@ export default function ActivityFeed({ activities, onActivityClick, currentUser 
       if (act.hostId === currentUser.uid) return;
       if (act.status !== "active") return;
       if (act.spotsOccupied >= act.spotsTotal) return;
+      if (act.isArchived) return;
 
       let score = 0;
       const reasons: string[] = [];
@@ -91,6 +92,7 @@ export default function ActivityFeed({ activities, onActivityClick, currentUser 
   }
 
   const filteredActivities = activities.filter((activity) => {
+    if (activity.isArchived) return false;
     const matchesCategory = activeCategory === "All" || activity.category === activeCategory;
     const matchesSearch =
       activity.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -25,7 +25,7 @@ const ActivityCard: React.FC<ActivityCardProps> = ({ activity, onClick }) => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       onClick={() => onClick(activity.id)}
-      className="bg-white p-6 border border-zinc-100 rounded-3xl mb-4 flex gap-6 cursor-pointer group hover:border-zinc-300 hover:shadow-xl hover:shadow-zinc-100 transition-all"
+      className="bg-white p-8 md:p-10 border border-zinc-100 rounded-3xl mb-6 flex flex-col sm:flex-row gap-8 cursor-pointer group hover:border-zinc-300 hover:shadow-xl hover:shadow-zinc-100 transition-all"
     >
       <div className="flex-1">
         <div className="flex items-center gap-2 mb-3">

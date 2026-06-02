@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Activity, UserProfile, JoinRequest, ChatMessage, ActivityCategory } from "../types";
-import { X, MapPin, Clock, Users, User, Check, Shield, Send, MessageSquare, Trash2, Edit3, Save, Phone, Share2, Receipt } from "lucide-react";
+import { X, MapPin, Clock, Users, User, Check, Shield, Send, MessageSquare, Trash2, Edit3, Save, Phone, Share2, Receipt, Archive } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { db } from "../lib/firebase";
@@ -121,15 +121,14 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
     const approvedRequests = requests.filter(r => r.status === "approved" && r.userId !== currentUser.uid);
     approvedRequests.forEach(req => {
       setMemberNames(prev => ({ ...prev, [req.userId]: req.requesterName }));
-      if (!req.requesterPhone && !memberPhones[req.userId]) {
-        getDoc(doc(db, "users", req.userId)).then(snapshot => {
-          if (snapshot.exists()) {
-            const data = snapshot.data() as UserProfile;
-            if (data.phone) setMemberPhones(prev => ({ ...prev, [req.userId]: data.phone }));
-            if (data.upiId) setMemberUpis(prev => ({ ...prev, [req.userId]: data.upiId! }));
-          }
-        }).catch(err => console.error("Error fetching approved member user:", err));
-      }
+      // Always fetch to ensure we have upiId and phone
+      getDoc(doc(db, "users", req.userId)).then(snapshot => {
+        if (snapshot.exists()) {
+          const data = snapshot.data() as UserProfile;
+          if (data.phone) setMemberPhones(prev => ({ ...prev, [req.userId]: data.phone }));
+          if (data.upiId) setMemberUpis(prev => ({ ...prev, [req.userId]: data.upiId! }));
+        }
+      }).catch(err => console.error("Error fetching approved member user:", err));
     });
     
     // add self to names/upi
@@ -306,6 +305,20 @@ export default function ActivityModal({ activityId, onClose, currentUser }: Acti
                       className={`p-2 rounded-full transition-colors ${isEditing ? 'bg-black text-white' : 'hover:bg-zinc-100 text-zinc-400'}`}
                     >
                       <Edit3 className="w-5 h-5" />
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        try {
+                          await updateDoc(doc(db, "activities", activityId), { isArchived: !activity?.isArchived });
+                          toast.success(activity?.isArchived ? "Activity unarchived!" : "Activity archived!");
+                        } catch (e: any) {
+                          toast.error("Failed to archive.");
+                        }
+                      }}
+                      className={`p-2 rounded-full transition-colors ${activity?.isArchived ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' : 'hover:bg-zinc-100 text-zinc-400 hover:text-black'}`}
+                      title={activity?.isArchived ? "Unarchive" : "Archive"}
+                    >
+                      <Archive className="w-5 h-5" />
                     </button>
                     <div className="relative">
                       <button 

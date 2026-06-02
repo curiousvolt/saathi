@@ -55,6 +55,7 @@ export interface Activity {
   hostBhawan?: string;
   recurrenceFrequency?: "Daily" | "Weekly";
   isRecurring?: boolean;
+  isArchived?: boolean;
 }
 
 export interface JoinRequest {

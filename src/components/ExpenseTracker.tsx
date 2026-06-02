@@ -112,6 +112,7 @@ export default function ExpenseTracker({ activityId, currentUser, approvedMember
   }
 
   const myDebts = transactions.filter(t => t.from === currentUser.uid);
+  const myCredits = transactions.filter(t => t.to === currentUser.uid);
 
   return (
     <div className="flex flex-col h-full bg-white relative">
@@ -191,6 +192,26 @@ export default function ExpenseTracker({ activityId, currentUser, approvedMember
                         ) : (
                           <span className="text-[8px] text-red-500 font-bold uppercase tracking-wider bg-red-100/50 px-2 py-1 rounded">No UPI ID</span>
                         )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {myCredits.length > 0 && (
+              <div>
+                <h4 className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-4">Owed to You</h4>
+                <div className="space-y-3">
+                  {myCredits.map((credit, idx) => {
+                    const fromName = memberNames[credit.from] || "Unknown User";
+                    return (
+                      <div key={idx} className="flex items-center justify-between bg-emerald-50 border border-emerald-100 p-4 rounded-2xl">
+                        <div>
+                          <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wide">From {fromName}</div>
+                          <div className="text-lg font-black text-emerald-900">₹{credit.amount.toFixed(2)}</div>
+                        </div>
+                        <span className="text-[10px] text-emerald-600 font-black uppercase tracking-widest bg-emerald-100 px-3 py-1.5 rounded-lg">Wait for Pay</span>
                       </div>
                     );
                   })}
