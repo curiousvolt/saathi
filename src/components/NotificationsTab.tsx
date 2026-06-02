@@ -14,6 +14,34 @@ interface NotificationsTabProps {
   onOpenChat: (activityId: string) => void;
 }
 
+interface HostRequestAlert {
+  id: string;
+  type: "host_request";
+  activityId: string;
+  activityTitle: string;
+  status: string;
+  requesterName: string;
+  requesterPhoto?: string;
+  requesterDept: string;
+  requesterYear: number;
+  requesterGender: string;
+  createdAt: string;
+  rawRequest: JoinRequest;
+}
+
+interface ParticipantStatusAlert {
+  id: string;
+  type: "participant_status";
+  activityId: string;
+  activityTitle: string;
+  hostName: string;
+  status: string;
+  createdAt: string;
+  rawRequest: JoinRequest;
+}
+
+type AlertItem = HostRequestAlert | ParticipantStatusAlert;
+
 export default function NotificationsTab({
   user,
   activities,
@@ -51,7 +79,7 @@ export default function NotificationsTab({
   }, [user.uid]);
 
   // Generate alerts chronologically
-  const hostAlerts = allRequests
+  const hostAlerts: HostRequestAlert[] = allRequests
     .filter(req => {
       const act = activities.find(a => a.id === req.activityId);
       return act && act.hostId === user.uid;
@@ -60,7 +88,7 @@ export default function NotificationsTab({
       const act = activities.find(a => a.id === req.activityId);
       return {
         id: `host-${req.id}-${req.activityId}`,
-        type: "host_request",
+        type: "host_request" as const,
         activityId: req.activityId,
         activityTitle: act?.title || "Activity",
         status: req.status,
@@ -74,13 +102,13 @@ export default function NotificationsTab({
       };
     });
 
-  const participantAlerts = allRequests
+  const participantAlerts: ParticipantStatusAlert[] = allRequests
     .filter(req => req.userId === user.uid)
     .map(req => {
       const act = activities.find(a => a.id === req.activityId);
       return {
         id: `participant-${req.activityId}`,
-        type: "participant_status",
+        type: "participant_status" as const,
         activityId: req.activityId,
         activityTitle: act?.title || "Activity",
         hostName: act?.hostName || "Host",
@@ -90,7 +118,7 @@ export default function NotificationsTab({
       };
     });
 
-  const mrgAlerts = [...hostAlerts, ...participantAlerts].sort(
+  const mrgAlerts: AlertItem[] = [...hostAlerts, ...participantAlerts].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
