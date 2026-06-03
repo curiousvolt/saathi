@@ -55,11 +55,11 @@ service cloud.firestore {
     // 2. Activities Collection
     match /activities/{activityId} {
       function isValidActivity(data) {
-        return data.title is string && data.title.size() > 0 &&
+        return data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
                data.category in ['Travel', 'Social', 'Sports', 'Study', 'Other'] &&
                data.dateTime is string &&
                data.meetingPoint is string &&
-               data.spotsTotal is int && data.spotsTotal > 0 &&
+               data.spotsTotal is int && data.spotsTotal > 0 && data.spotsTotal <= 50 &&
                data.hostId is string;
       }
 
@@ -70,7 +70,8 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow get: if isSignedIn();
       allow create: if isIitrEmail() && isValidActivity(incoming()) && incoming().hostId == request.auth.uid;
-      allow update: if isHost() && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'destination', 'venue', 'dateTime', 'meetingPoint', 'spotsTotal', 'status', 'isRecurring', 'recurrenceFrequency', 'spotsOccupied', 'isArchived']));
+      allow update: if isHost() && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'destination', 'venue', 'dateTime', 'meetingPoint', 'spotsTotal', 'status', 'isRecurring', 'recurrenceFrequency', 'spotsOccupied', 'isArchived', 'locationCoords']))
+                    && (!('spotsOccupied' in request.resource.data.diff(resource.data).affectedKeys()) || incoming().spotsOccupied >= 0);
       allow delete: if isHost();
     }
 
@@ -94,7 +95,7 @@ service cloud.firestore {
         request.auth.uid == requestId || 
         isApprovedMember()
       );
-      allow create: if isIitrEmail() && isValidRequest(incoming());
+      allow create: if isIitrEmail() && isValidRequest(incoming()) && requestId == request.auth.uid;
       allow update: if isSignedIn() && (
         // Requester can cancel (withdraw)
         (request.auth.uid == existing().userId && incoming().status == 'cancelled') ||
@@ -114,7 +115,8 @@ service cloud.firestore {
       }
 
       allow list, get: if isMember();
-      allow create: if isMember() && incoming().payerId == request.auth.uid && incoming().amount > 0;
+      allow create: if isMember() && incoming().payerId == request.auth.uid && incoming().amount > 0 && incoming().amount <= 100000
+                    && incoming().description is string && incoming().description.size() > 0 && incoming().description.size() <= 200;
       allow update, delete: if isMember() && existing().payerId == request.auth.uid;
     }
 
@@ -130,13 +132,18 @@ service cloud.firestore {
       }
 
       allow list, get: if isMember();
-      allow create: if isMember() && incoming().senderId == request.auth.uid && incoming().text.size() <= 2000;
+      allow create: if isMember() && incoming().senderId == request.auth.uid && incoming().text is string && incoming().text.size() > 0 && incoming().text.size() <= 2000;
     }
 
-    // 5. Ratings
+    // 5. Ratings — use deterministic doc ID: {activityId}_{userId}
     match /ratings/{ratingId} {
       allow list, get: if isSignedIn();
-      allow create: if isIitrEmail() && incoming().fromUserId == request.auth.uid;
+      allow create: if isIitrEmail() 
+                    && incoming().fromUserId == request.auth.uid
+                    && ratingId == (incoming().activityId + '_' + request.auth.uid)
+                    && incoming().rating is int && incoming().rating >= 1 && incoming().rating <= 5
+                    && incoming().review is string && incoming().review.size() <= 500;
+      allow update, delete: if false; // Ratings are immutable
     }
 
     // 6. Reports
@@ -145,10 +152,14 @@ service cloud.firestore {
       allow read: if false; // Admins only (handled via console/server)
     }
 
-    // 7. Notifications
+    // 7. Notifications — restrict who can create what
     match /notifications/{notificationId} {
       allow list, get: if isSignedIn() && existing().userId == request.auth.uid;
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() 
+                    && incoming().userId is string 
+                    && incoming().type in ['join_request', 'request_approved', 'request_declined']
+                    && incoming().message is string && incoming().message.size() <= 500
+                    && incoming().isRead == false;
       allow update: if isSignedIn() && existing().userId == request.auth.uid && incoming().isRead == true;
     }
   }

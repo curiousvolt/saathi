@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from "react";
+import React, { useState, useEffect, FormEvent } from "react";
 import Navbar from "./components/Navbar";
 import ActivityFeed from "./components/ActivityFeed";
 import CreateActivityModal from "./components/CreateActivityModal";
@@ -28,7 +28,13 @@ import {
   onSnapshot, 
   orderBy,
   addDoc,
-  updateDoc
+  updateDoc,
+  increment,
+  getDocs,
+  limit,
+  startAfter,
+  QueryDocumentSnapshot,
+  DocumentData
 } from "firebase/firestore";
 
 export default function App() {
@@ -45,6 +51,20 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [isEmailLogin, setIsEmailLogin] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const lastDocRef = React.useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+
+  // Deep-link: auto-open activity from URL ?activity=<id>
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const activityId = params.get("activity");
+    if (activityId) {
+      setSelectedActivityId(activityId);
+      // Clean the URL without reloading
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -115,7 +135,59 @@ export default function App() {
 
       return () => unsubscribe();
     }
+  }, []);
+
+  const INITIAL_LIMIT = 15;
+
+  useEffect(() => {
+    if (!user?.isProfileComplete) return;
+
+    const loadInitial = async () => {
+      try {
+        const q = query(
+          collection(db, "activities"),
+          where("status", "==", "active"),
+          orderBy("createdAt", "desc"),
+          limit(INITIAL_LIMIT)
+        );
+        const snapshot = await getDocs(q);
+        const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Activity));
+        setActivities(docs);
+        lastDocRef.current = snapshot.docs[snapshot.docs.length - 1] || null;
+        setHasMore(snapshot.docs.length === INITIAL_LIMIT);
+      } catch (e) {
+        console.error("Failed to load activities:", e);
+      }
+    };
+
+    loadInitial();
   }, [user?.isProfileComplete]);
+
+  const loadMoreActivities = async () => {
+    if (!lastDocRef.current || isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const q = query(
+        collection(db, "activities"),
+        where("status", "==", "active"),
+        orderBy("createdAt", "desc"),
+        startAfter(lastDocRef.current),
+        limit(INITIAL_LIMIT)
+      );
+      const snapshot = await getDocs(q);
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Activity));
+      setActivities(prev => {
+        const existingIds = new Set(prev.map(a => a.id));
+        return [...prev, ...docs.filter(d => !existingIds.has(d.id))];
+      });
+      lastDocRef.current = snapshot.docs[snapshot.docs.length - 1] || lastDocRef.current;
+      setHasMore(snapshot.docs.length === INITIAL_LIMIT);
+    } catch (e) {
+      console.error("Failed to load more activities:", e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   // Real-time unread notifications count
   useEffect(() => {
@@ -191,7 +263,7 @@ export default function App() {
     try {
       await updateDoc(doc(db, "activities", activityId, "requests", req.id), { status: "approved" });
       await updateDoc(doc(db, "activities", activityId), {
-        spotsOccupied: (act?.spotsOccupied || 1) + 1
+        spotsOccupied: increment(1)
       });
       
       await addDoc(collection(db, "notifications"), {
@@ -533,6 +605,9 @@ export default function App() {
                 activities={activities} 
                 onActivityClick={(id) => setSelectedActivityId(id)} 
                 currentUser={user}
+                hasMore={hasMore}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={loadMoreActivities}
               />
             </motion.div>
           )}

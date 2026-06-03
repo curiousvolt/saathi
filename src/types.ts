@@ -56,6 +56,7 @@ export interface Activity {
   recurrenceFrequency?: "Daily" | "Weekly";
   isRecurring?: boolean;
   isArchived?: boolean;
+  locationCoords?: { lat: number; lng: number };
 }
 
 export interface JoinRequest {

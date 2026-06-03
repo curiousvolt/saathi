@@ -52,8 +52,26 @@ export default function CreateActivityModal({ isOpen, onClose, onSubmit, current
     if (!currentUser) return;
 
     setIsChecking(true);
+
+    let locationCoords: { lat: number; lng: number } | undefined = undefined;
+    if (navigator.geolocation) {
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+        });
+        locationCoords = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+      } catch (err) {
+        console.log("Geolocation error or denied:", err);
+      }
+    }
+
+    const finalFormData = { ...formData, locationCoords };
+
     try {
-      const activityDateTime = new Date(formData.dateTime);
+      const activityDateTime = new Date(finalFormData.dateTime);
       const startTime = new Date(activityDateTime.getTime() - 4 * 60 * 60 * 1000);
       const endTime = new Date(activityDateTime.getTime() + 4 * 60 * 60 * 1000);
 
@@ -88,13 +106,13 @@ export default function CreateActivityModal({ isOpen, onClose, onSubmit, current
         setSuggestions(duplicates);
         setShowSuggestions(true);
       } else {
-        onSubmit(formData);
+        onSubmit(finalFormData);
         handleClose();
       }
     } catch (err) {
       console.error("Duplicate check failed:", err);
       // Fallback: submit and create anyway
-      onSubmit(formData);
+      onSubmit(finalFormData);
       handleClose();
     } finally {
       setIsChecking(false);
