@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Activity, JoinRequest, UserProfile, AppNotification } from "../types";
 import { motion } from "motion/react";
-import { Bell, Check, ShieldAlert, ShieldCheck, Calendar, MessageSquare } from "lucide-react";
+import { Bell, ShieldAlert, ShieldCheck, Calendar, MessageSquare, Loader2, ChevronDown } from "lucide-react";
 import { db } from "../lib/firebase";
-import { collection, query, where, onSnapshot, doc, updateDoc, orderBy } from "firebase/firestore";
+import { collection, query, where, doc, updateDoc, orderBy, getDocs, limit, startAfter, QueryDocumentSnapshot, DocumentData, writeBatch } from "firebase/firestore";
 
 interface NotificationsTabProps {
   user: UserProfile;
@@ -51,32 +51,79 @@ export default function NotificationsTab({
   onOpenChat
 }: NotificationsTabProps) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [isLoadingNotifs, setIsLoadingNotifs] = useState(false);
+  const [hasOlderNotifs, setHasOlderNotifs] = useState(false);
+  const lastNotifDocRef = React.useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const NOTIF_LIMIT = 20;
+
+  const markAllRead = async (docs: AppNotification[]) => {
+    const unread = docs.filter(n => !n.isRead);
+    if (unread.length === 0) return;
+    try {
+      const batch = writeBatch(db);
+      unread.forEach(n => batch.update(doc(db, "notifications", n.id), { isRead: true }));
+      await batch.commit();
+    } catch (e) {
+      console.error("Failed to mark as read", e);
+    }
+  };
 
   useEffect(() => {
-    // Listen for new notifications
-    const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", user.uid)
-    );
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification));
-      // Sort in memory since we might not have a composite index for userId + createdAt
-      docs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setNotifications(docs);
+    let cancelled = false;
+    setIsLoadingNotifs(true);
 
-      // Mark all as read when tab is opened
-      docs.filter(n => !n.isRead).forEach(async (n) => {
-        try {
-          await updateDoc(doc(db, "notifications", n.id), { isRead: true });
-        } catch (e) {
-          console.error("Failed to mark as read", e);
-        }
-      });
-    });
+    const loadRecent = async () => {
+      try {
+        const q = query(
+          collection(db, "notifications"),
+          where("userId", "==", user.uid),
+          orderBy("createdAt", "desc"),
+          limit(NOTIF_LIMIT)
+        );
+        const snapshot = await getDocs(q);
+        if (cancelled) return;
+        const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification));
+        setNotifications(docs);
+        lastNotifDocRef.current = snapshot.docs[snapshot.docs.length - 1] || null;
+        setHasOlderNotifs(snapshot.docs.length === NOTIF_LIMIT);
+        markAllRead(docs);
+      } catch (e) {
+        console.error("Failed to load notifications", e);
+      } finally {
+        if (!cancelled) setIsLoadingNotifs(false);
+      }
+    };
 
-    return () => unsubscribe();
+    loadRecent();
+    return () => { cancelled = true; };
   }, [user.uid]);
+
+  const loadOlderNotifications = async () => {
+    if (!lastNotifDocRef.current || isLoadingNotifs) return;
+    setIsLoadingNotifs(true);
+    try {
+      const q = query(
+        collection(db, "notifications"),
+        where("userId", "==", user.uid),
+        orderBy("createdAt", "desc"),
+        startAfter(lastNotifDocRef.current),
+        limit(NOTIF_LIMIT)
+      );
+      const snapshot = await getDocs(q);
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification));
+      setNotifications(prev => {
+        const ids = new Set(prev.map(n => n.id));
+        return [...prev, ...docs.filter(d => !ids.has(d.id))];
+      });
+      lastNotifDocRef.current = snapshot.docs[snapshot.docs.length - 1] || lastNotifDocRef.current;
+      setHasOlderNotifs(snapshot.docs.length === NOTIF_LIMIT);
+      markAllRead(docs);
+    } catch (e) {
+      console.error("Failed to load older notifications", e);
+    } finally {
+      setIsLoadingNotifs(false);
+    }
+  };
 
   // Generate alerts chronologically
   const hostAlerts: HostRequestAlert[] = allRequests
@@ -124,9 +171,12 @@ export default function NotificationsTab({
 
   return (
     <div className="space-y-6 pt-4 md:pt-6">
-      <div className="mb-10 text-left border-b border-zinc-100 pb-6">
-        <h2 className="text-4xl font-black text-black tracking-tight font-display">ALERTS & JOINS</h2>
-        <p className="text-zinc-400 font-bold uppercase tracking-widest text-[10px] mt-1">Real-time requests and circle coordinates</p>
+      <div className="mb-10 text-left border-b border-zinc-100 pb-6 flex items-end justify-between">
+        <div>
+          <h2 className="text-4xl font-black text-black tracking-tight font-display">ALERTS & JOINS</h2>
+          <p className="text-zinc-400 font-bold uppercase tracking-widest text-[10px] mt-1">Last 20 notifications · older available below</p>
+        </div>
+        {isLoadingNotifs && <Loader2 className="w-5 h-5 text-zinc-300 animate-spin" />}
       </div>
 
       {/* System Notifications List */}
@@ -273,6 +323,29 @@ export default function NotificationsTab({
           <Bell className="w-12 h-12 text-zinc-200 mb-4 animate-bounce" />
           <h4 className="font-bold text-zinc-800 text-lg">Your feed is clean</h4>
           <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider mt-1">Pending inquiries and coordinates will show up here</p>
+        </div>
+      )}
+
+      {/* Load older notifications */}
+      {hasOlderNotifs && (
+        <button
+          onClick={loadOlderNotifications}
+          disabled={isLoadingNotifs}
+          className="mt-6 w-full py-4 border-2 border-dashed border-zinc-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:border-zinc-400 hover:text-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          {isLoadingNotifs ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Loading...</>
+          ) : (
+            <><ChevronDown className="w-4 h-4" /> Load Older Notifications</>
+          )}
+        </button>
+      )}
+
+      {!hasOlderNotifs && notifications.length > 0 && (
+        <div className="mt-8 text-center text-[9px] font-black uppercase tracking-widest text-zinc-300 flex items-center gap-3">
+          <span className="flex-1 h-px bg-zinc-100" />
+          All caught up · {notifications.length} notification{notifications.length !== 1 ? "s" : ""} shown
+          <span className="flex-1 h-px bg-zinc-100" />
         </div>
       )}
     </div>
